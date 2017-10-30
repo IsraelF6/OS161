@@ -144,3 +144,26 @@ threadtest2(int nargs, char **args)
 
 	return 0;
 }
+
+int
+threadtest4(int nargs, char **args)
+{
+	(void)nargs;
+	(void)args;
+	init_sem();
+	kprintf("\nStarting thread test 4....\n");
+	
+	char name[16];
+	int i = 0, result;
+	snprintf(name, sizeof(name), "threadtest%d", i);
+	result = thread_fork(name, NULL,
+			printout,NULL, i);
+	if (result) {
+		panic("threadtest: thread_fork failed %s)\n",
+			strerror(result));
+	}
+	thread_join();
+	kprintf(" WORLD\n");
+	return 0;
+	
+}
