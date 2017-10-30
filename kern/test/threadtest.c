@@ -145,50 +145,16 @@ threadtest2(int nargs, char **args)
 	return 0;
 }
 
-static unsigned long int tt4val;
-
-static void
-join_test_child_thread()
-{
-    int i;
-    for (i = 0; i < 10; ++i)
-        ++tt4val;
-    for (i = 0; i < 20000; ++i); // do nothing for some time 
-    thread_exit();
-}
 int
-threadtest4(int nargs, char** args)
+threadtest4(int nargs, char **args)
 {
-    (void)nargs;
-    (void)args;
+	(void)nargs;
+	(void)args;
 
+	init_sem();
+	kprintf("Starting thread test 4...\n");
+	runthreads(0);
+	kprintf("\nThread test 4 done.\n");
 
-    tt4val = 0;
-    struct thread * join_with; // Child thread to join with
-    kprintf("Forking 10 threads, each increment tt4val 10 times.\n");
-    kprintf("Parent won't join with these threads.\n");
-    /* Fork 10 child threads that each increment tt4val 10 times, but these won't join */
-    int i;
-    for (i = 0; i < 10; ++i)
-    {
-        join_with = thread_fork_with_possible_join("threadtest4", NULL,
-                                                   join_test_child_thread, NULL, 0);
-    }
-    /* Parent doesn't wait so tt4val should not be 100 yet */
-    kprintf("Value without joining: %lu\n", tt4val);
-
-    kprintf("\nSetting tt4val back to 0.\n");
-    kprintf("Forking 10 threads, each increment tt4val 10 times.\n");
-    kprintf("This time the parent will join with the child threads.\n");
-    /* Repeating the steps again, this time joining the threads */
-    tt4val = 0;
-    for (i = 0; i < 10; ++i)
-    {
-        join_with = thread_fork_with_possible_join("threadtest4", NULL,
-                                                   join_test_child_thread, NULL, 0);
-        thread_join(join_with);
-    }
-    /* Parent should wait for children to complete so by this point tt4val should be 100 */
-    kprintf("Value with joining (should be 100): %lu\n", tt4val);
-    return 0;
+	return 0;
 }
