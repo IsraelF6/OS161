@@ -157,7 +157,7 @@ join_test_child_thread()
     thread_exit();
 }
 int
-jointest(int nargs, char** args)
+threadtest4(int nargs, char** args)
 {
     (void)nargs;
     (void)args;
@@ -171,7 +171,7 @@ jointest(int nargs, char** args)
     int i;
     for (i = 0; i < 10; ++i)
     {
-        join_with = thread_fork_with_possible_join("jointest", NULL,
+        join_with = thread_fork_with_possible_join("threadtest4", NULL,
                                                    join_test_child_thread, NULL, 0);
     }
     /* Parent doesn't wait so tt4val should not be 100 yet */
@@ -184,7 +184,7 @@ jointest(int nargs, char** args)
     tt4val = 0;
     for (i = 0; i < 10; ++i)
     {
-        join_with = thread_fork_with_possible_join("jointest", NULL,
+        join_with = thread_fork_with_possible_join("threadtest4", NULL,
                                                    join_test_child_thread, NULL, 0);
         thread_join(join_with);
     }
