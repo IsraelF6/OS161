@@ -153,7 +153,19 @@ threadtest4(int nargs, char **args)
 
 	init_sem();
 	kprintf("Starting thread test 4...\n");
-	runthreads(0);
+	
+	char name[16];
+	int result, i=0;
+
+	snprintf(name, sizeof(name), "threadtest%d", i);
+	result = thread_fork(name, NULL,
+		     doloud ? loudthread : quietthread, NULL, i);
+	if (result) {
+		panic("threadtest: thread_fork failed %s)\n", strerror(result));
+		}
+	}
+	
+	thread_join();
 	kprintf("\nThread test 4 done.\n");
 
 	return 0;
