@@ -95,6 +95,22 @@ quietthread(void *junk, unsigned long num)
 
 static
 void
+printout(void *junk, unsigned long num)
+{
+	(void)junk;
+	int i = num;
+	kprintf("\nH");
+	kprintf("E");
+	kprintf("L");
+	kprintf("L");
+	kprintf("O");
+	kprintf(" ");
+	i = i+1;
+	V(tsem);
+}
+
+static
+void
 runthreads(int doloud)
 {
 	char name[16];
