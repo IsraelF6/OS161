@@ -155,7 +155,7 @@ threadtest4(int nargs, char **args)
 	kprintf("Starting thread test 4...\n");
 	
 	char name[16];
-	int result, i=0;
+	int i=0;
 
 	snprintf(name, sizeof(name), "threadtest%d", i);
 	/*result = thread_fork(name, NULL,
