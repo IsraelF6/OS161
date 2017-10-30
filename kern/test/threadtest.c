@@ -163,7 +163,6 @@ threadtest4(int nargs, char **args)
 	if (result) {
 		panic("threadtest: thread_fork failed %s)\n", strerror(result));
 		}
-	}
 	
 	thread_join();
 	kprintf("\nThread test 4 done.\n");
