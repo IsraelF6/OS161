@@ -39,6 +39,7 @@
 #include <array.h>
 #include <spinlock.h>
 #include <threadlist.h>
+#include <synch.h>
 
 struct cpu;
 
@@ -109,6 +110,10 @@ struct thread {
 	bool t_did_reserve_buffers;	/* reserve_buffers() in effect */
 
 	/* add more here as needed */
+	struct thread *t_child;
+	struct thread *t_parent;
+	struct lock* join_lock; 
+	struct cv* join_cv;
 };
 
 /*
@@ -159,6 +164,7 @@ __DEAD void thread_exit(void);
  * Interrupts need not be disabled.
  */
 void thread_yield(void);
+void thread_join(void);
 
 /*
  * Reshuffle the run queue. Called from the timer interrupt.

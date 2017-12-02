@@ -150,6 +150,10 @@ thread_create(const char *name)
 	thread->t_did_reserve_buffers = false;
 
 	/* If you add to struct thread, be sure to initialize here */
+	thread->t_child = NULL;
+	thread->t_parent = NULL;
+	thread->join_lock = NULL;
+	thread->join_cv = NULL;
 
 	return thread;
 }
@@ -503,6 +507,7 @@ thread_fork(const char *name,
 	struct thread *newthread;
 	int result;
 
+	
 	newthread = thread_create(name);
 	if (newthread == NULL) {
 		return ENOMEM;
@@ -543,6 +548,14 @@ thread_fork(const char *name,
 
 	/* Set up the switchframe so entrypoint() gets called */
 	switchframe_init(newthread, entrypoint, data1, data2);
+	
+	/*Link the child thread to parent*/
+	curthread->t_child = newthread;
+	newthread->t_parent = curthread;
+	
+	/*Initialise the locks and cv's to be used later (potentially)*/
+	curthread->join_lock = lock_create("Join Lock"); 
+	curthread->join_cv = cv_create("Join CV");
 
 	/* Lock the current cpu's run queue and make the new thread runnable */
 	thread_make_runnable(newthread, false);
@@ -762,6 +775,9 @@ thread_startup(void (*entrypoint)(void *data1, unsigned long data2),
 	/* Enable interrupts. */
 	spl0();
 
+	
+	
+	
 	/* Call the function. */
 	entrypoint(data1, data2);
 
@@ -798,11 +814,20 @@ thread_exit(void)
 
 	/* Check the stack guard band. */
 	thread_checkstack(cur);
+	
+	/* Acquire lock for conditional variable, and signal that child is finished*/
+	if(cur->t_parent != NULL){
+		lock_acquire(cur->t_parent->join_lock);
+		cur->t_parent->t_child = NULL;
+		cv_signal(cur->t_parent->join_cv, cur->t_parent->join_lock);
+		lock_release(cur->t_parent->join_lock);
+	}
 
 	/* Interrupts off on this processor */
         splhigh();
 	thread_switch(S_ZOMBIE, NULL, NULL);
 	panic("braaaaaaaiiiiiiiiiiinssssss\n");
+	
 }
 
 /*
@@ -814,14 +839,19 @@ thread_yield(void)
 	thread_switch(S_READY, NULL, NULL);
 }
 
-////////////////////////////////////////////////////////////
+void
+thread_join(void)
+{
+	lock_acquire(curthread->join_lock);
+	while(curthread->t_child != NULL)
+	{
+		cv_wait(curthread->join_cv, curthread->join_lock);
+	}
+	lock_release(curthread->join_lock);
+	
+}
 
-/*
- * Scheduler.
- *
- * This is called periodically from hardclock(). It should reshuffle
- * the current CPU's run queue by job priority.
- */
+////////////////////////////////////////////////////////////
 
 void
 schedule(void)
