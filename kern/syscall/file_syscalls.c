@@ -28,23 +28,45 @@ int
 sys_open(const_userptr_t upath, int flags, mode_t mode, int *retval)
 {
 	const int allflags = O_ACCMODE | O_CREAT | O_EXCL | O_TRUNC | O_APPEND | O_NOCTTY;
-
+	
 	char *kpath;
 	struct openfile *file;
 	int result = 0;
+	size_t act;
+	
 
 	/* 
 	 * Your implementation of system call open starts here.  
 	 *
 	 * Check the design document design/filesyscall.txt for the steps
 	 */
-	(void) upath; // suppress compilation warning until code gets written
-	(void) flags; // suppress compilation warning until code gets written
-	(void) mode; // suppress compilation warning until code gets written
-	(void) retval; // suppress compilation warning until code gets written
-	(void) allflags; // suppress compilation warning until code gets written
-	(void) kpath; // suppress compilation warning until code gets written
-	(void) file; // suppress compilation warning until code gets written
+	
+	if((flags & allflags)  != allflags){
+	//	kprintf("\nBawal aaache babla re");
+	//	return EINVAL;
+	}
+	kpath = (char*)kmalloc(sizeof(char)*PATH_MAX);
+	result = copyinstr(upath, kpath, PATH_MAX, &act);
+	kprintf("\n%d", result);
+	
+	if(result){
+		kfree(kpath);
+		return result;
+	}
+
+	result = openfile_open(kpath, flags, mode, &file);
+	kprintf("\n%d", result);
+	if(result){
+		kfree(kpath);
+		return result;
+	}
+
+	result = filetable_place(curproc->p_filetable, file, retval);
+	kprintf("\n%d", result);
+	if(result){
+		kfree(kpath);
+		return result;
+	}
 
 	return result;
 }
@@ -55,17 +77,48 @@ sys_open(const_userptr_t upath, int flags, mode_t mode, int *retval)
 int
 sys_read(int fd, userptr_t buf, size_t size, int *retval)
 {
-       int result = 0;
-
+        int result = 0;
+	int pos;
+	bool locked;
        /* 
         * Your implementation of system call read starts here.  
         *
         * Check the design document design/filesyscall.txt for the steps
         */
-       (void) fd; // suppress compilation warning until code gets written
-       (void) buf; // suppress compilation warning until code gets written
-       (void) size; // suppress compilation warning until code gets written
-       (void) retval; // suppress compilation warning until code gets written
+	struct openfile* file;
+	result = filetable_get(curproc->p_filetable, fd, &file);
+	
+	if(result){
+	   return result;
+	}
+	
+	locked = VOP_ISSEEKABLE(file->of_vnode);
+	if(locked){
+		lock_acquire(file->of_offsetlock);
+		pos = file->of_offset;
+	}
+	else
+		pos = 0;
+	
+	
+	if(file->of_accmode == O_WRONLY){
+		return 1;
+	}
+	struct uio reader;
+	struct iovec io;
+	uio_kinit(&io, &reader, buf, size, pos, UIO_READ);
+	reader.uio_segflg = UIO_USERSPACE;
+	reader.uio_space = proc_getas();
+	result = VOP_READ(file->of_vnode, &reader);
+	
+	if(locked){
+		file->of_offset = reader.uio_offset;
+		lock_release(file->of_offsetlock);
+	}
+	filetable_put(curproc->p_filetable,fd, file);
+	if(!result)
+		*retval = size - reader.uio_resid;
+	
 
        return result;
 }
@@ -74,10 +127,155 @@ sys_read(int fd, userptr_t buf, size_t size, int *retval)
  * write() - write data to a file
  */
 
+int
+sys_write(int fd, userptr_t buf, size_t size, int *retval)
+{
+	int result = 0;
+	int pos;
+ 	bool locked;
+       /* 
+        * Your implementation of system call read starts here.  
+        *
+        * Check the design document design/filesyscall.txt for the steps
+        */
+	struct openfile* file;
+	result = filetable_get(curproc->p_filetable, fd, &file);
+	
+	if(result){
+	   return result;
+	}
+	
+	locked = VOP_ISSEEKABLE(file->of_vnode);
+	if(locked){
+		lock_acquire(file->of_offsetlock);
+		pos = file->of_offset;
+	}
+	else
+		pos = 0;
+	
+	
+	if(file->of_accmode == O_RDONLY){
+		return 1;
+	}
+	struct uio reader;
+	struct iovec io;
+	uio_kinit(&io, &reader, buf, size, pos, UIO_WRITE);
+	reader.uio_segflg = UIO_USERSPACE;
+	reader.uio_space = proc_getas();
+	result = VOP_WRITE(file->of_vnode, &reader);
+	
+	if(locked){
+		file->of_offset = reader.uio_offset;
+		lock_release(file->of_offsetlock);
+	}
+	filetable_put(curproc->p_filetable,fd, file);
+	if(!result)
+		*retval = size - reader.uio_resid;
+	
+
+       return result;
+}
+
 /*
  * close() - remove from the file table.
  */
 
+int 
+sys_close(int fd){
+	
+	struct openfile *oldfile_ret;
+	if(!filetable_okfd(curproc->p_filetable, fd)) {
+		kprintf("CLOSE- Bad filehandle\n");
+		return EBADF;
+	}
+	kprintf("\nSHHSHS");
+	filetable_placeat(curproc->p_filetable, NULL, fd, &oldfile_ret);
+	kprintf("\nSHHSHS");
+	openfile_decref(oldfile_ret);
+	return 0;
+	
+}
+
 /* 
 * meld () - combine the content of two files word by word into a new file
 */
+
+int 
+sys_meld(userptr_t upath1, userptr_t upath2, userptr_t upath3, int *retval){
+	
+	int fd1, fd2, fd3;
+	struct openfile *file1;
+	struct openfile *file2;
+	struct openfile *file3;
+	
+	char* duffer1 = kmalloc(512);
+	char* duffer2 = kmalloc(512);
+	char* duffer3 = kmalloc(1024);
+	
+	struct iovec iov1, iov2, iov3;
+	struct uio ui1, ui2, ui3;
+	
+	int i, result;
+	int l1, l2;
+	
+	result = sys_open(upath1,O_RDONLY, 0664, &fd1);
+	if(result)
+		return result;
+	result = filetable_get(curproc->p_filetable, fd1, &file1);
+	if(result)
+		return result;
+	result = sys_open(upath2,O_RDONLY, 0664, &fd2);
+	if(result)
+		return result;
+	result = filetable_get(curproc->p_filetable, fd2, &file2);
+	if(result)
+		return result;
+	result = sys_open(upath3,O_CREAT, 0664, &fd3);
+	if(result)
+		return result;
+	result = filetable_get(curproc->p_filetable, fd3, &file3);
+	if(result)
+		return result;
+	
+	uio_kinit(&iov1, &ui1, duffer1, 512, 0, UIO_READ);
+	uio_kinit(&iov2, &ui2, duffer2, 512, 0, UIO_READ);
+	
+	result = VOP_READ(file1->of_vnode, &ui1);
+	if(result)
+		return result;
+	l1 = 512 - ui1.uio_resid;
+	if(l1 < 512)
+		for(i = l1; i<512; i++)
+			duffer1[i] = ' ';
+	result = VOP_READ(file2->of_vnode, &ui2);
+	if(result)
+		return result;
+	l2 = 512 - ui1.uio_resid;
+	if(l2 < 512)
+		for(i = l2; i<512; i++)
+			duffer2[i] = ' ';
+			
+	for(i=0;i*8 < 1024; i++){
+		duffer3[i*8] = duffer1[i*4];
+		duffer3[i*8 + 1] = duffer1[i*4 + 1];
+		duffer3[i*8 + 2] = duffer1[i*4 + 2];
+		duffer3[i*8 + 3] = duffer1[i*4 + 3];
+		duffer3[i*8 + 4] = duffer2[i*4];
+		duffer3[i*8 + 5] = duffer2[i*4 + 1];
+		duffer3[i*8 + 6] = duffer2[i*4 + 2];
+		duffer3[i*8 + 7] = duffer2[i*4 + 3];
+	}
+	uio_kinit(&iov3, &ui3, duffer3, 1024, 0, UIO_WRITE);
+	result = VOP_WRITE(file3->of_vnode, &ui3);
+	if(result)
+		return result;
+	//l2 = 1024 - ui3.uio_resid;
+	*retval = 0;
+	filetable_put(curproc->p_filetable,fd3, file3);
+	sys_close(fd3);
+	filetable_put(curproc->p_filetable,fd2, file2);
+	sys_close(fd2);
+	filetable_put(curproc->p_filetable,fd1, file1);
+	sys_close(fd1);
+	return 0;
+}
